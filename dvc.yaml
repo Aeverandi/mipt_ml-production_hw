@@ -1,4 +1,3 @@
-# dvc.yaml
 stages:
   prepare:
     cmd: python src/prepare.py
@@ -15,5 +14,7 @@ stages:
       - src/train.py
       - params.yaml
       - data/processed/
+    params:
+      - train.model_params
     outs:
-      - model.pkl
+      - model.json
