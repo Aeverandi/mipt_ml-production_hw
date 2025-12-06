@@ -14,14 +14,12 @@ def main():
     # Датасет с каггл: https://www.kaggle.com/datasets/aadarshvelu/heart-failure-prediction-clinical-records
     df = pd.read_csv("data/raw/heart_failure_clinical_records.csv")
 
-    y = np.array([(bool(e), t) for e, t in zip(df['DEATH_EVENT'], df['time'])],
-                 dtype=[('event', '?'), ('time', '<f8')])
-    X = df.drop(columns=['DEATH_EVENT', 'time'])
+    y = df['ejection_fraction']
+    X = df.drop(columns=['DEATH_EVENT', 'time', 'ejection_fraction'])
 
     X_train, X_test, y_train, y_test = train_test_split(X, y,
             test_size=test_size,
-            random_state=random_state,
-            stratify=df['DEATH_EVENT'] )
+            random_state=random_state)
 
     # Сохраняем
     os.makedirs("data/processed", exist_ok=True)
