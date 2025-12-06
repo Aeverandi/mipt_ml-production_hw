@@ -1,19 +1,17 @@
 import pandas as pd
 import numpy as np
-import joblib
 import yaml
 import mlflow
-from sksurv.ensemble import RandomSurvivalForest
-from sksurv.metrics import concordance_index_censored
+import mlflow.xgboost
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import xgboost as xgb
 
 def main():
     # --- Загрузка параметров ---
     with open("params.yaml") as f:
         params = yaml.safe_load(f)
-    n_est = params["train"]["n_estimators"]
-    max_d = params["train"]["max_depth"]
-    random_state = params["train"]["random_state"]
-
+    model_params = params["train"]["model_params"]
+    random_state = params["prepare"]["random_state"]
     # --- Загрузка данных ---
     X_train = pd.read_pickle("data/processed/X_train.pkl")
     X_test = pd.read_pickle("data/processed/X_test.pkl")
@@ -21,32 +19,43 @@ def main():
     y_test = np.load("data/processed/y_test.npy", allow_pickle=True)
 
     # --- MLflow ---
-    mlflow.set_experiment("RSF Survival")
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment("ef_prediction")
+    mlflow.xgboost.autolog(log_models=False)
+
     with mlflow.start_run():
+        # Логируем параметры вручную
+        mlflow.log_params({
+            "test_size": params["prepare"]["test_size"],
+            **model_params
+        })
+
         # --- Обучение ---
-        rsf = RandomSurvivalForest(
-            n_estimators=n_est,
-            max_depth=max_d,
+        model = xgb.XGBRegressor(
             random_state=random_state,
-            n_jobs=-1
+            **model_params
         )
-        rsf.fit(X_train, y_train)
+        model.fit(X_train, y_train)
 
-        # --- Оценка ---
-        risk_scores = rsf.predict(X_test)
-        c_index = concordance_index_censored(
-            y_test['event'], y_test['time'], risk_scores
-        )[0]
+        # --- Прогноз и метрики ---
+        y_pred = model.predict(X_test)
 
-        # --- Логирование ---
-        mlflow.log_param("n_estimators", n_est)
-        mlflow.log_param("max_depth", max_d)
-        mlflow.log_metric("c_index", c_index)
-        mlflow.set_tag("model", "RandomSurvivalForest")
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        r2 = r2_score(y_test, y_pred)
 
-        # --- Сохранение модели ---
-        joblib.dump(rsf, "model.pkl")
-        mlflow.log_artifact("model.pkl")  # ← ключевая строка!
+        # Логируем все три метрики
+        mlflow.log_metrics({
+            "MAE": mae,
+            "RMSE": rmse,
+            "R2": r2
+        })
+
+        # --- Сохранение модели как артефакта ---
+        model.save_model("model.json")
+        mlflow.log_artifact("model.json")
+
+        print(f"MAE: {mae:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}")
 
 if __name__ == "__main__":
     main()
